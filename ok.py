@@ -1,7 +1,6 @@
 #!/usr/bin/python
 import os
 import requests
-import capnp
 import uuid
 import tempfile
 import lxml.html
@@ -9,11 +8,13 @@ import urlparse
 import logging
 import subprocess
 import scandir
-capnp.remove_import_hook()
-meteor_app_capnp = capnp.load('meteor-app.capnp')
 
 import contextlib
 import os
+
+
+ORIG_CWD = os.getcwd()
+STATE_PATH = os.path.join(ORIG_CWD, 'state')
 
 
 def github_url_to_dir_name(github_url):
@@ -42,10 +43,19 @@ def main(max_package_attempts=None, url_generator_callable=None):
     assert os.path.exists('/usr/bin/markdown'), "You need to have a markdown renderer installed."
 
     # If our state directory does not exist, do a fresh git clone.
-    if not os.path.exists('state'):
-        subprocess.check_call(['git', 'clone', os.environ.get('GIT_REPO_URL'), 'state'])
-        # Make sure someone has set up the directory correctly.
-        assert os.path.exists('state/data.md'), "You need to make data.md, which we use as an ad-hoc data store."
+    if not os.path.exists(STATE_PATH):
+        subprocess.check_call(
+            ['git', 'clone', os.environ.get('GIT_REPO_URL'), STATE_PATH],
+            cwd=ORIG_CWD,
+       )
+    else:
+        # Make sure the state directory is up to date.
+        subprocess.check_call(['git', 'push', '-q'],
+                              cwd=STATE_PATH)
+        subprocess.check_call(['git', 'pull', '--rebase'],
+                              cwd=STATE_PATH)
+        subprocess.check_call(['git', 'push', '-q'],
+                              cwd=STATE_PATH)
 
     # Loop across GitHub results for Meteor apps. Attempt to turn them
     # into SPKs.
@@ -55,8 +65,9 @@ def main(max_package_attempts=None, url_generator_callable=None):
 
         # Only attempt to package this if it looks like we haven't
         # packaged it already.
-        #if github_url_seems_present_in_state(github_url):
-        #    continue
+        if github_url_seems_present_in_state(github_url):
+            print 'Skipping', github_url, 'because we already tried it.'
+            continue
 
         try:
             make_package(github_url)
@@ -66,13 +77,18 @@ def main(max_package_attempts=None, url_generator_callable=None):
             return
 
 def github_url_seems_present_in_state(github_url):
-    # Make assertions that the GitHub URL seems canonical enough
-    # to be worth checking for.
-    #
-    # "Accidentally" quadratic. Life is short, or something.
-    with open('state/data.md') as fd:
-        s = fd.read()
-        return github_url in s
+    as_path = github_url_to_dir_name(github_url)
+    return os.path.exists(os.path.join(STATE_PATH, as_path))
+
+
+def save_state_of_this_github_repo(github_url, packagingSuccessful):
+    as_path = github_url_to_dir_name(github_url)
+    as_abspath = os.path.exists(os.path.join(STATE_PATH, as_path))
+    with open(as_abspath, 'w') as fd:
+        fd.write(str(int(packagingSuccessful)))
+    subprocess.check_call(['git', 'add', '.'], cwd=STATE_PATH)
+    subprocess.check_call(['git', 'commit', '-m', 'autocommit', '--allow-empty'], cwd=STATE_PATH)
+
 
 def make_package(github_url):
     # General strategy:
@@ -90,9 +106,6 @@ def make_package(github_url):
     #   filesystem. hopefully vagrant-spk gave it a nice filename.
     prefix = github_url_to_dir_name(github_url) + '.'
     with working_directory(tempfile.mkdtemp(prefix=prefix)):
-        # Store a note in "state/data.md" indicating that we attempted
-        # to auto-package this thing.
-
         print os.getcwd()
         subprocess.check_call(['git', 'clone', github_url])
         # Find the .meteor dir and cd into its parent.
@@ -106,24 +119,22 @@ def make_package(github_url):
         # TODO: In vagrant-spk auto meteor, hack out Cordova stuff.
         environ = dict(os.environ)
         environ['VAGRANT_SPK_EXPERIMENTAL'] = 'Y'
+        success = False
         try:
-            subprocess.check_call(['vagrant-spk', 'auto', 'meteor'],
-                                  env=environ)
+            if not environ.get('DRY_RUN'):
+                subprocess.check_call(['vagrant-spk', 'auto', 'meteor'],
+                                      env=environ)
+            success = True
         finally:
-            # Well, it worked or not. Destroy the VM because life is short.
-            subprocess.check_call(['vagrant-spk', 'destroy'])
-        # TODO:
-        #
-        # - Use the GitHub repo name somewhere in the sandstorm-pkgdef.capnp metadata
-        #
-        # - Use that in the *.spk filename too
-        #
-        # - Have some way to avoid re-packaging things that already were packaged,
-        #   so I can stop & start this process.
-        #
-        #     - One way to do that is to store the info in a git repository...
-        #       ... along with the working SPKs... in a Markdown format... that
-        #       I can auto-convert into HTML.
+            if not environ.get('DRY_RUN'):
+                subprocess.check_call(['vagrant-spk', 'destroy'])
+                # Well, it worked or not. Destroy the VM because life is short.
+
+        # Store a note in "state/data.md" indicating that we attempted
+        # to auto-package this thing, and how it went.
+
+        save_state_of_this_github_repo(
+            github_url, packagingSuccessful=success)
 
 def make_github_web_search_url_for_meteor_apps(page_num):
     url = 'https://github.com/search?o=desc&q=path:.meteor+browser+server%22This+file+contains+information+which+helps+Meteor+properly+upgrade+your%22&ref=searchresults&s=indexed&type=Code&utf8=%E2%9C%93'
