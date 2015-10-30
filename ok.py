@@ -18,7 +18,7 @@ import os
 
 def github_url_to_dir_name(github_url):
     without_github_dot_com = github_url.replace('https://github.com/', '')
-    assert github_url.count('/') == 1
+    assert without_github_dot_com.count('/') == 1, without_github_dot_com
     return without_github_dot_com.replace('/', '.')
 
 
@@ -35,10 +35,9 @@ def working_directory(path):
     finally:
         os.chdir(prev_cwd)
 
-# Make sure that we will be able to access GitHub.
-assert os.environ.get('GITHUB_TOKEN'), "You need a GitHub token in your environment."
-
-def main(max_package_attempts=None):
+def main(max_package_attempts=None, url_generator_callable=None):
+    if url_generator_callable is None:
+        url_generator_callable = iterator_across_meteor_apps_on_github
     assert os.environ.get('GIT_REPO_URL'), "You need the git repo URL in your environment."
     assert os.path.exists('/usr/bin/markdown'), "You need to have a markdown renderer installed."
 
@@ -51,18 +50,18 @@ def main(max_package_attempts=None):
     # Loop across GitHub results for Meteor apps. Attempt to turn them
     # into SPKs.
     n = 0
-    for github_url in iterator_across_meteor_apps_on_github():
+    for github_url in url_generator_callable():
         n += 1
 
         # Only attempt to package this if it looks like we haven't
         # packaged it already.
-        if github_url_seems_present_in_state(github_url):
-            continue
+        #if github_url_seems_present_in_state(github_url):
+        #    continue
 
         try:
             make_package(github_url)
-        except Exception:
-            logging.exception()
+        except Exception as e:
+            logging.exception(e)
         if (max_package_attempts is not None) and (n >= max_package_attempts):
             return
 
@@ -89,8 +88,11 @@ def make_package(github_url):
     #
     # - Record that we tried in "state". Leave the SPK on the
     #   filesystem. hopefully vagrant-spk gave it a nice filename.
-    prefix = github_url_to_dir_name(github_url)
+    prefix = github_url_to_dir_name(github_url) + '.'
     with working_directory(tempfile.mkdtemp(prefix=prefix)):
+        # Store a note in "state/data.md" indicating that we attempted
+        # to auto-package this thing.
+
         print os.getcwd()
         subprocess.check_call(['git', 'clone', github_url])
         # Find the .meteor dir and cd into its parent.
@@ -128,13 +130,8 @@ def make_github_web_search_url_for_meteor_apps(page_num):
     url += '&={0}'.format(page_num)
     return url
 
-def make_github_search_url():
-    url = ('https://paulproteus:' + os.environ['GITHUB_TOKEN'] +
-           '@api.github.com/search/repositories?q=meteor&sortby=stars&per_page=100')
-    return url
-
 def iterator_across_known_good_meteor_apps_on_github():
-    for item in ['https://https://github.com/HelloMeteorBook/2015GlobalHackathon']:
+    for item in ['https://github.com/HelloMeteorBook/2015GlobalHackathon']:
         yield item
 
 def iterator_across_meteor_apps_on_github():
@@ -144,7 +141,7 @@ def iterator_across_meteor_apps_on_github():
         results = get_matching_github_urls(response_bytes)
         for item in results:
             yield item
-        current_page += 1
+        page_num += 1
 
 def get_search_response(page_num=1):
     # TODO: Turn into a generator.
