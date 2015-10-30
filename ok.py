@@ -83,9 +83,9 @@ def github_url_seems_present_in_state(github_url):
 
 def save_state_of_this_github_repo(github_url, packagingSuccessful):
     as_path = github_url_to_dir_name(github_url)
-    as_abspath = os.path.exists(os.path.join(STATE_PATH, as_path))
+    as_abspath = os.path.join(os.path.join(STATE_PATH, as_path))
     with open(as_abspath, 'w') as fd:
-        fd.write(str(int(packagingSuccessful)))
+        fd.write(unicode(int(packagingSuccessful)))
     subprocess.check_call(['git', 'add', '.'], cwd=STATE_PATH)
     subprocess.check_call(['git', 'commit', '-m', 'autocommit', '--allow-empty'], cwd=STATE_PATH)
 
@@ -130,14 +130,14 @@ def make_package(github_url):
                 subprocess.check_call(['vagrant-spk', 'destroy'])
                 # Well, it worked or not. Destroy the VM because life is short.
 
-        # Store a note in "state/data.md" indicating that we attempted
-        # to auto-package this thing, and how it went.
-
-        save_state_of_this_github_repo(
-            github_url, packagingSuccessful=success)
+            # Always store a note in "state/data.md" indicating that
+            # we attempted to auto-package this thing, and how it
+            # went.
+            save_state_of_this_github_repo(
+                github_url, packagingSuccessful=success)
 
 def make_github_web_search_url_for_meteor_apps(page_num):
-    url = 'https://github.com/search?o=desc&q=path:.meteor+browser+server%22This+file+contains+information+which+helps+Meteor+properly+upgrade+your%22&ref=searchresults&s=indexed&type=Code&utf8=%E2%9C%93'
+    url = 'https://github.com/search?o=asc&q=path:.meteor+browser+server&s=indexed&type=Code&utf8=%E2%9C%93'
     url += '&={0}'.format(page_num)
     return url
 
@@ -146,6 +146,7 @@ def iterator_across_known_good_meteor_apps_on_github():
         yield item
 
 def iterator_across_meteor_apps_on_github():
+    # TODO: Do other searches and union them all.
     page_num = 1
     while page_num <= 100:
         response_bytes = get_search_response(page_num)
@@ -167,10 +168,3 @@ def get_matching_github_urls(response_bytes):
 
 def github_urls_from_search_results(results):
     return [x['html_url'] for x in results['items']]
-
-# Use raw.githubusercontent.com to look for a .meteor/ directory. Note
-# that its absence does not mean the thing is not a Meteor app; this
-# could be a false negative. We should do a fresh pass via GitHub
-# search for the negatives.
-def looks_like_a_meteor_app(github_url):
-    githubusercontent
