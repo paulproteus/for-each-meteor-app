@@ -139,8 +139,8 @@ def make_package(github_url):
                 github_url, packagingSuccessful=success)
 
 def make_github_web_search_url_for_meteor_apps(page_num):
-    url = 'https://github.com/search?o=asc&q=path:.meteor+browser+server&s=indexed&type=Code&utf8=%E2%9C%93'
-    url += '&={0}'.format(page_num)
+    url = 'https://github.com/search?o=desc&q=path:.meteor+browser+server&s=indexed&type=Code&utf8=%E2%9C%93'
+    url += '&p={0}'.format(page_num)
     return url
 
 def iterator_across_known_good_meteor_apps_on_github():
@@ -160,7 +160,9 @@ def iterator_across_meteor_apps_on_github():
 def get_search_response(page_num=1):
     # TODO: Turn into a generator.
     url = make_github_web_search_url_for_meteor_apps(page_num)
+    print 'requesting', url, '...'
     response = requests.get(url)
+    assert response.status_code == 200, response.status_code
     return response.content
 
 def get_matching_github_urls(response_bytes):
