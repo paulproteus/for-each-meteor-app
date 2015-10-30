@@ -147,7 +147,7 @@ def iterator_across_known_good_meteor_apps_on_github():
     for item in ['https://github.com/HelloMeteorBook/2015GlobalHackathon']:
         yield item
 
-def iterator_across_meteor_apps_on_github():
+def iterator_across_meteor_apps_on_github(slow_self_down=False):
     # TODO: Do other searches and union them all.
     page_num = 1
     while page_num <= 100:
@@ -155,6 +155,9 @@ def iterator_across_meteor_apps_on_github():
         results = get_matching_github_urls(response_bytes)
         for item in results:
             yield item
+        if slow_self_down:
+            import time
+            time.sleep(20)
         page_num += 1
 
 def get_search_response(page_num=1):
