@@ -1,0 +1,7 @@
+requests
+ipython
+pycapnp
+treq
+lxml
+cssselect
+scandir
