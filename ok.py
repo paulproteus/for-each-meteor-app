@@ -88,6 +88,7 @@ def save_state_of_this_github_repo(github_url, packagingSuccessful):
         fd.write(unicode(int(packagingSuccessful)))
     subprocess.check_call(['git', 'add', '.'], cwd=STATE_PATH)
     subprocess.check_call(['git', 'commit', '-m', 'autocommit', '--allow-empty'], cwd=STATE_PATH)
+    subprocess.check_call(['git', 'push'], cwd=STATE_PATH)
 
 
 def make_package(github_url):
