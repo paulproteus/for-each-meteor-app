@@ -78,7 +78,8 @@ def main(max_package_attempts=None, url_generator_callable=None):
 
 def github_url_seems_present_in_state(github_url):
     as_path = github_url_to_dir_name(github_url)
-    return os.path.exists(os.path.join(STATE_PATH, as_path))
+    as_abspath = os.path.join(os.path.join(STATE_PATH, as_path))
+    return os.path.exists(as_abspath)
 
 
 def save_state_of_this_github_repo(github_url, packagingSuccessful):
