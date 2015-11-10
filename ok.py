@@ -8,6 +8,8 @@ import urlparse
 import logging
 import subprocess
 import scandir
+import shutil
+import socket
 
 import contextlib
 import os
@@ -15,6 +17,9 @@ import os
 
 ORIG_CWD = os.getcwd()
 STATE_PATH = os.path.join(ORIG_CWD, 'state')
+SPK_EXPORT_PATH = os.path.join(ORIG_CWD, 'spk-export')
+SPK_EXPORT_OWNCLOUD_URL = os.environ.get('OWNCLOUD_URL', '')
+SHOULD_DELETE_TMPDIR = (socket.gethostname() == 'roll')
 
 
 def github_url_to_dir_name(github_url):
@@ -39,7 +44,8 @@ def working_directory(path):
 def main(max_package_attempts=None, url_generator_callable=None):
     if url_generator_callable is None:
         url_generator_callable = iterator_across_meteor_apps_on_github
-    assert os.environ.get('GIT_REPO_URL'), "You need the git repo URL in your environment."
+    if not os.path.exists('state'):
+        assert os.environ.get('GIT_REPO_URL'), "You need the git repo URL in your environment."
     assert os.path.exists('/usr/bin/markdown'), "You need to have a markdown renderer installed."
 
     # If our state directory does not exist, do a fresh git clone.
@@ -106,9 +112,10 @@ def make_package(github_url):
     #
     # - Record that we tried in "state". Leave the SPK on the
     #   filesystem. hopefully vagrant-spk gave it a nice filename.
-    prefix = github_url_to_dir_name(github_url) + '.'
+    prefix = 'for-each-meteor.' + github_url_to_dir_name(github_url) + '.'
     with working_directory(tempfile.mkdtemp(prefix=prefix)):
-        print os.getcwd()
+        this_tmp_dir = os.getcwd()
+        print this_tmp_dir
         subprocess.check_call(['git', 'clone', github_url])
         # Find the .meteor dir and cd into its parent.
         found_meteor_dir = False
@@ -121,6 +128,7 @@ def make_package(github_url):
         # TODO: In vagrant-spk auto meteor, hack out Cordova stuff.
         environ = dict(os.environ)
         environ['VAGRANT_SPK_EXPERIMENTAL'] = 'Y'
+        environ['DESTROY_AFTER_AUTO_PACKAGE'] = 'Y'
         success = False
         try:
             if not environ.get('DRY_RUN'):
@@ -137,6 +145,22 @@ def make_package(github_url):
             # went.
             save_state_of_this_github_repo(
                 github_url, packagingSuccessful=success)
+
+            if success:
+                assert os.path.exists('../app.spk')
+                relative_name = github_url_to_dir_name(github_url) + '.spk'
+                shutil.move('../app.spk', os.path.join(
+                    SPK_EXPORT_PATH, relative_name))
+                subprocess.check_call(['bash', 'gen_index.sh', relative_name], cwd=SPK_EXPORT_PATH)
+                if SPK_EXPORT_OWNCLOUD_URL:
+                    subprocess.check_call(['owncloudcmd', SPK_EXPORT_PATH, SPK_EXPORT_OWNCLOUD_URL],
+                                          cwd=SPK_EXPORT_PATH)
+
+            # On the headless autopackaging machine, delete this tmpdir,
+            # because no one's benefiting from the huge disk space
+            # use.
+            if SHOULD_DELETE_TMPDIR:
+                shutil.rmtree(this_tmp_dir)
 
 def make_github_web_search_url_for_meteor_apps(page_num):
     url = 'https://github.com/search?o=desc&q=path:.meteor+browser+server&s=indexed&type=Code&utf8=%E2%9C%93'
